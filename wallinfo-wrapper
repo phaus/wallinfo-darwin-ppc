@@ -1,0 +1,8 @@
+#!/bin/sh
+# wallinfo arch picker — installed as /usr/local/bin/wallinfo.
+# Prefers the ppc64 binary; it only execs on 64-bit-capable CPUs (G5).
+# On a G4 the ppc64 binary fails to exec and we fall through to ppc32.
+if [ -x /usr/local/libexec/wallinfo-ppc64 ] && /usr/local/libexec/wallinfo-ppc64 -V >/dev/null 2>&1; then
+    exec /usr/local/libexec/wallinfo-ppc64 "$@"
+fi
+exec /usr/local/libexec/wallinfo-ppc "$@"
