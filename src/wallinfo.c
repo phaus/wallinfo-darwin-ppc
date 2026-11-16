@@ -73,11 +73,10 @@
 #define VERSION "1.0"
 
 /* --- layout ------------------------------------------------------------ */
-/* The menu bar covers the top 22 px of the screen; the info box must start
- * below it. TOP_OFFSET = menu bar height + a small inset. */
-#define MENUBAR_HEIGHT   22
-#define BOX_INSET        8
-#define TOP_OFFSET       (MENUBAR_HEIGHT + BOX_INSET)
+/* Box position as fractions of the rendered (screen) size: left edge at
+ * 70% width, top edge at 25% height. Clamped so the box stays inside. */
+#define BOX_POS_X_FRAC   0.70f
+#define BOX_POS_Y_FRAC   0.25f
 
 #define FONT_NAME        "Monaco"
 #define FONT_SIZE        12.0f
@@ -605,7 +604,7 @@ static int render_wallpaper(const char *src, const char *dst,
     CGColorSpaceRef cs;
     void *buf = NULL;
     size_t w, h, i;
-    float maxw = 0, boxw, boxh, top_cg;
+    float maxw = 0, boxw, boxh, top_cg, box_left;
     CGImageRef out;
     CFURLRef durl;
     CGImageDestinationRef dest;
@@ -681,19 +680,29 @@ static int render_wallpaper(const char *src, const char *dst,
     boxh = in->n * LINE_HEIGHT + 2 * BOX_PAD;
     if (boxw > w) boxw = w;
     if (boxh > h) boxh = h;
-    top_cg = (float)h - TOP_OFFSET;           /* CG origin is bottom-left */
-    if (top_cg < boxh) top_cg = boxh;
+
+    /* position: fractions of the image (screen) size, clamped inside */
+    {
+        float box_x = w * BOX_POS_X_FRAC;
+        float box_y_top = h * BOX_POS_Y_FRAC;   /* top edge, screen coords */
+        if (box_x + boxw > w) box_x = w - boxw;
+        if (box_x < 0) box_x = 0;
+        if (box_y_top + boxh > h) box_y_top = h - boxh;
+        if (box_y_top < 0) box_y_top = 0;
+        top_cg = h - box_y_top;                 /* CG origin is bottom-left */
+        box_left = box_x;
+    }
 
     CGContextSetRGBFillColor(ctx, 1, 1, 1, BOX_ALPHA);
-    CGContextFillRect(ctx, CGRectMake(0, top_cg - boxh, boxw, boxh));
+    CGContextFillRect(ctx, CGRectMake(box_left, top_cg - boxh, boxw, boxh));
 
     CGContextSelectFont(ctx, FONT_NAME, FONT_SIZE, kCGEncodingMacRoman);
     CGContextSetRGBFillColor(ctx, 0, 0, 0, 1);
     CGContextSetTextDrawingMode(ctx, kCGTextFill);
     for (i = 0; i < (size_t)in->n; i++) {
         float baseline = top_cg - BOX_PAD - FONT_SIZE - i * LINE_HEIGHT;
-        CGContextShowTextAtPoint(ctx, BOX_PAD, baseline, in->lines[i],
-                                 strlen(in->lines[i]));
+        CGContextShowTextAtPoint(ctx, box_left + BOX_PAD, baseline,
+                                 in->lines[i], strlen(in->lines[i]));
     }
 
     out = CGBitmapContextCreateImage(ctx);

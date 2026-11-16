@@ -86,9 +86,9 @@ en1  192.168.168.168
 en1  fd00:...
 ```
 
-The box starts 30 px from the top: 22 px menu bar height plus an 8 px inset
-(`TOP_OFFSET` in `src/wallinfo.c`) — verified by pixel-sampling the rendered
-wallpaper.
+The box is positioned at **70 % of the screen width** (left edge) and
+**25 % of the screen height** (top edge), clamped so it always stays fully
+inside the image (`BOX_POS_X_FRAC` / `BOX_POS_Y_FRAC` in `src/wallinfo.c`).
 
 The overlay is rendered at **screen resolution**: the source wallpaper is
 scaled to cover the screen (like the Dock's "fill screen" placement) before
