@@ -545,13 +545,19 @@ static void write_state(const char *orig, const char *out)
     fclose(f);
 }
 
-static void remove_old_outputs(void)
+/* Remove rendered wallpapers except the one currently active. Unique
+ * filenames per render force the Dock to load the new image — reusing one
+ * path let the Dock show a stale cached picture (observed 2026-11-16). */
+static void cleanup_old_outputs(const char *keep)
 {
     DIR *d = opendir(g_statedir);
     struct dirent *de;
+    const char *base = strrchr(keep, '/');
+    if (base) base++;
     if (!d) return;
     while ((de = readdir(d)) != NULL) {
-        if (strncmp(de->d_name, "wallpaper.", 10) == 0) {
+        if (strncmp(de->d_name, "wallpaper", 9) == 0 &&
+            (!base || strcmp(de->d_name, base) != 0)) {
             char p[PATH_MAX];
             snprintf(p, sizeof p, "%s/%s", g_statedir, de->d_name);
             unlink(p);
@@ -894,8 +900,10 @@ static int update(void)
         strlcpy(orig, src, sizeof orig);
     }
 
-    remove_old_outputs();
-    snprintf(out, sizeof out, "%s%s", outbase, out_ext(src));
+    /* unique filename per render: the Dock caches by path, so reusing
+     * wallpaper.jpg left it showing a stale picture */
+    snprintf(out, sizeof out, "%s/wallpaper-%ld-%d.%s", g_statedir,
+             (long)time(NULL), (int)getpid(), out_ext(src));
     strlcpy(chosen, src, sizeof chosen);
 
     if (render_wallpaper(chosen, out, &in) != 0) {
@@ -904,6 +912,7 @@ static int update(void)
     }
     set_wallpaper(out);
     write_state(orig, out);
+    cleanup_old_outputs(out);
 
     strlcpy(g_last_digest, digest, sizeof g_last_digest);
     strlcpy(g_last_out, out, sizeof g_last_out);

@@ -100,7 +100,8 @@ corner.
 ## How the wallpaper is switched (the tricky part)
 
 The source wallpaper is only ever read. The overlay is rendered into
-`~/Library/Application Support/wallinfo/wallpaper.<ext>` and activated:
+`~/Library/Application Support/wallinfo/wallpaper-<ts>-<pid>.<ext>` and
+activated:
 
 1. **Prefs rewrite** — both dicts of `~/Library/Preferences/com.apple.desktop.plist`
    are rewritten to a clean static state (`Change=false`, `ImageFilePath`,
