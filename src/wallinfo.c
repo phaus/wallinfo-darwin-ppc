@@ -611,6 +611,7 @@ static int render_wallpaper(const char *src, const char *dst,
     CGImageDestinationRef dest;
     CFStringRef type;
     int ok = 0;
+    int img_screen = 0;
 
     if (!surl) return -1;
     isrc = CGImageSourceCreateWithURL(surl, NULL);
@@ -627,6 +628,27 @@ static int render_wallpaper(const char *src, const char *dst,
         CGImageRelease(img);
         return -1;
     }
+
+    /* Render at SCREEN size: scale-to-cover + center-crop, like the Dock's
+     * "fill screen" placement. Otherwise the Dock crops the image and the
+     * box (top-left!) can fall outside the visible area — observed with a
+     * 2560x1600 wallpaper on a 1024x768 screen: only the box's bottom-right
+     * corner survived. A screen-sized wallpaper is always shown 1:1. */
+    {
+        size_t sw = CGDisplayPixelsWide(CGMainDisplayID());
+        size_t sh = CGDisplayPixelsHigh(CGMainDisplayID());
+        if (sw && sh && (sw != w || sh != h)) {
+            float s = (float)sw / w > (float)sh / h ? (float)sw / w
+                                                    : (float)sh / h;
+            lg("scaling %lux%lu -> screen %lux%lu (cover %.3f)",
+               (unsigned long)w, (unsigned long)h,
+               (unsigned long)sw, (unsigned long)sh, s);
+            w = sw;
+            h = sh;
+            img_screen = 1;
+        }
+    }
+
     buf = malloc(w * h * 4);
     if (!buf) { CGImageRelease(img); return -1; }
     cs = CGColorSpaceCreateDeviceRGB();
@@ -635,7 +657,19 @@ static int render_wallpaper(const char *src, const char *dst,
     CGColorSpaceRelease(cs);
     if (!ctx) { free(buf); CGImageRelease(img); return -1; }
 
-    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img);
+    if (img_screen) {
+        /* draw scaled to cover the screen, centered */
+        float s = (float)w / CGImageGetWidth(img) >
+                  (float)h / CGImageGetHeight(img)
+                      ? (float)w / CGImageGetWidth(img)
+                      : (float)h / CGImageGetHeight(img);
+        float dw = CGImageGetWidth(img) * s;
+        float dh = CGImageGetHeight(img) * s;
+        CGContextDrawImage(ctx, CGRectMake((w - dw) / 2, (h - dh) / 2,
+                                           dw, dh), img);
+    } else {
+        CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img);
+    }
     CGImageRelease(img);
 
     /* box geometry: widest line wins; menu bar clearance via TOP_OFFSET */

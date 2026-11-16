@@ -90,6 +90,13 @@ The box starts 30 px from the top: 22 px menu bar height plus an 8 px inset
 (`TOP_OFFSET` in `src/wallinfo.c`) — verified by pixel-sampling the rendered
 wallpaper.
 
+The overlay is rendered at **screen resolution**: the source wallpaper is
+scaled to cover the screen (like the Dock's "fill screen" placement) before
+the box is drawn. A screen-sized wallpaper is always shown 1:1 by the Dock,
+so the box can never be cropped out of view — otherwise a 2560x1600
+wallpaper on a 1024x768 screen lost everything but the box's bottom-right
+corner.
+
 ## How the wallpaper is switched (the tricky part)
 
 The source wallpaper is only ever read. The overlay is rendered into
