@@ -73,10 +73,12 @@
 #define VERSION "1.0"
 
 /* --- layout ------------------------------------------------------------ */
-/* Box position as fractions of the rendered (screen) size: left edge at
- * 70% width, top edge at 25% height. Clamped so the box stays inside. */
-#define BOX_POS_X_FRAC   0.70f
-#define BOX_POS_Y_FRAC   0.25f
+/* The box sits in the very top-left corner. The menu bar covers the top
+ * 22 px of the screen; TOP_OFFSET = menu bar height + a small inset. */
+#define MENUBAR_HEIGHT   22
+#define BOX_INSET        8
+#define TOP_OFFSET       (MENUBAR_HEIGHT + BOX_INSET)
+#define BOX_LEFT_INSET   10   /* left edge starts 10 px into the image */
 
 #define FONT_NAME        "Monaco"
 #define FONT_SIZE        12.0f
@@ -687,17 +689,11 @@ static int render_wallpaper(const char *src, const char *dst,
     if (boxw > w) boxw = w;
     if (boxh > h) boxh = h;
 
-    /* position: fractions of the image (screen) size, clamped inside */
-    {
-        float box_x = w * BOX_POS_X_FRAC;
-        float box_y_top = h * BOX_POS_Y_FRAC;   /* top edge, screen coords */
-        if (box_x + boxw > w) box_x = w - boxw;
-        if (box_x < 0) box_x = 0;
-        if (box_y_top + boxh > h) box_y_top = h - boxh;
-        if (box_y_top < 0) box_y_top = 0;
-        top_cg = h - box_y_top;                 /* CG origin is bottom-left */
-        box_left = box_x;
-    }
+    /* position: top-left, below the menu bar, 10 px from the left edge
+     * (CG origin is bottom-left) */
+    top_cg = (float)h - TOP_OFFSET;
+    if (top_cg < boxh) top_cg = boxh;
+    box_left = BOX_LEFT_INSET;
 
     CGContextSetRGBFillColor(ctx, 1, 1, 1, BOX_ALPHA);
     CGContextFillRect(ctx, CGRectMake(box_left, top_cg - boxh, boxw, boxh));

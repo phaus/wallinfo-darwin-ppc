@@ -11,9 +11,6 @@ interface with its IPv4/IPv6 addresses.
 
 ![example wallpaper](docs/wallpaper-example.jpg)
 
-Related project: [kopia-darwin-ppc](https://github.com/phaus/kopia-darwin-ppc)
-(same cross-build setup, deployed on the same G4).
-
 ## Build
 
 Cross builds only — needs Apple frameworks, no native Linux build. Requires
@@ -86,9 +83,9 @@ en1  192.168.168.168
 en1  fd00:...
 ```
 
-The box is positioned at **70 % of the screen width** (left edge) and
-**25 % of the screen height** (top edge), clamped so it always stays fully
-inside the image (`BOX_POS_X_FRAC` / `BOX_POS_Y_FRAC` in `src/wallinfo.c`).
+The box is positioned in the **top-left corner**: top edge 30 px from the
+top (22 px menu bar + 8 px inset, `TOP_OFFSET`), left edge 10 px from the
+left (`BOX_LEFT_INSET`) — verified by pixel-sampling the rendered wallpaper.
 
 The overlay is rendered at **screen resolution**: the source wallpaper is
 scaled to cover the screen (like the Dock's "fill screen" placement) before
