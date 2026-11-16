@@ -14,8 +14,9 @@ interface with its IPv4/IPv6 addresses.
 ## Build
 
 Cross builds only — needs Apple frameworks, no native Linux build. Requires
-osxcross with the macports-legacy ppc targets (`oppc32-gcc` / `oppc64-gcc`),
-e.g. on a build box at `/opt/osxcross`.
+the [osxcross](https://github.com/tpoechtrager/osxcross) toolchain with the
+macports-legacy ppc targets (`oppc32-gcc` / `oppc64-gcc`), e.g. on a build
+box at `/opt/osxcross`.
 
 ```sh
 make cross32     # -> bin/wallinfo-ppc   (PowerPC G4)
