@@ -70,7 +70,7 @@
 #include <CoreServices/CoreServices.h>
 #include <ImageIO.h> /* sub-umbrella of ApplicationServices, see IMGIO_INC in Makefile */
 
-#define VERSION "1.0"
+#define VERSION "1.0.0"
 
 /* --- layout ------------------------------------------------------------ */
 /* The box sits in the very top-left corner. The menu bar covers the top
@@ -86,7 +86,8 @@
 #define BOX_PAD          8.0f
 #define BOX_ALPHA        0.85f
 
-#define MAX_LINES        32
+#define MAX_LINES        48
+#define BAR_LEN          20     /* ascii fill bar width */
 #define LINE_LEN         192
 #define MAX_IFACES       16
 
@@ -229,6 +230,72 @@ static void wait_for_network(int timeout)
     lg("network is up");
 }
 
+/* Volume name via getattrlist. The buffer starts with a u_int32_t total
+ * length, then the attrreference_t records; attr_dataoffset is relative to
+ * the attrreference itself, attr_length includes the NUL. */
+static void vol_name(const char *path, char *out, size_t n)
+{
+    struct attrlist al;
+    struct {
+        u_int32_t       total;
+        attrreference_t name;
+        char            namebuf[256];
+    } abuf;
+
+    out[0] = '\0';
+    memset(&al, 0, sizeof al);
+    al.bitmapcount = ATTR_BIT_MAP_COUNT;
+    al.volattr = ATTR_VOL_INFO | ATTR_VOL_NAME;
+    memset(&abuf, 0, sizeof abuf);
+    if (getattrlist(path, &al, &abuf, sizeof abuf, 0) == 0 &&
+        abuf.name.attr_length > 0) {
+        const char *nm = (const char *)&abuf.name + abuf.name.attr_dataoffset;
+        size_t l = abuf.name.attr_length;
+        if (l > sizeof abuf.namebuf - 1) l = sizeof abuf.namebuf - 1;
+        if (l > n - 1) l = n - 1;
+        memcpy(out, nm, l);
+        out[l] = '\0';
+    }
+}
+
+static void fmt_size(unsigned long long b, char *out, size_t n)
+{
+    if (b >= 1024ULL * 1024 * 1024)
+        snprintf(out, n, "%.1fG", (double)b / (1024.0 * 1024 * 1024));
+    else
+        snprintf(out, n, "%.0fM", (double)b / (1024.0 * 1024));
+}
+
+/* "vol  name (device)" + indented ascii fill bar line:
+ * "     [#####.....] 42% 10.4G/25.0G" */
+static void add_volume(struct info *in, const char *mnt, const char *dev)
+{
+    struct statfs sfs;
+    char volname[256], bar[BAR_LEN + 1], u[32], t[32];
+    unsigned long long tot, usd;
+    int pct, fill, i;
+
+    if (statfs(mnt, &sfs) != 0) return;
+    vol_name(mnt, volname, sizeof volname);
+    if (volname[0])
+        add_line(in, "vol  %s (%s)", volname, dev);
+    else
+        add_line(in, "vol  %s on %s", dev, mnt);
+
+    tot = (unsigned long long)sfs.f_blocks * (unsigned long long)sfs.f_bsize;
+    usd = (unsigned long long)(sfs.f_blocks - sfs.f_bfree) *
+          (unsigned long long)sfs.f_bsize;
+    pct = tot ? (int)(usd * 100 / tot) : 0;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    fill = BAR_LEN * pct / 100;
+    for (i = 0; i < BAR_LEN; i++) bar[i] = i < fill ? '#' : '.';
+    bar[BAR_LEN] = '\0';
+    fmt_size(usd, u, sizeof u);
+    fmt_size(tot, t, sizeof t);
+    add_line(in, "     [%s] %d%% %s/%s", bar, pct, u, t);
+}
+
 static void collect_info(struct info *in)
 {
     char host[256];
@@ -238,41 +305,7 @@ static void collect_info(struct info *in)
     if (gethostname(host, sizeof host) != 0) strcpy(host, "?");
     add_line(in, "%s", host);
 
-    /* boot volume: name + device */
-    {
-        struct statfs sfs;
-        if (statfs("/", &sfs) == 0) {
-            char volname[256] = "";
-            struct attrlist al;
-            /* getattrlist returns: u_int32_t total length, then the
-             * attrreference_t records; attr_dataoffset is relative to the
-             * attrreference itself. */
-            struct {
-                u_int32_t       total;
-                attrreference_t name;
-                char            namebuf[256];
-            } abuf;
-
-            memset(&al, 0, sizeof al);
-            al.bitmapcount = ATTR_BIT_MAP_COUNT;
-            al.volattr = ATTR_VOL_INFO | ATTR_VOL_NAME;
-            memset(&abuf, 0, sizeof abuf);
-            if (getattrlist("/", &al, &abuf, sizeof abuf, 0) == 0 &&
-                abuf.name.attr_length > 0) {
-                const char *n = (const char *)&abuf.name + abuf.name.attr_dataoffset;
-                size_t l = abuf.name.attr_length;
-                if (l > sizeof abuf.namebuf - 1) l = sizeof abuf.namebuf - 1;
-                memcpy(volname, n, l);
-                volname[l] = '\0';   /* attr_length includes the NUL; trim */
-            }
-            if (volname[0])
-                add_line(in, "vol  %s (%s)", volname, sfs.f_mntfromname);
-            else
-                add_line(in, "vol  %s on %s", sfs.f_mntfromname, sfs.f_mntonname);
-        }
-    }
-
-    /* startup time */
+    /* startup time (before the volumes, per spec) */
     {
         struct timeval tv;
         size_t len = sizeof tv;
@@ -282,6 +315,26 @@ static void collect_info(struct info *in)
             add_line(in, "boot %s", b);
         } else {
             add_line(in, "boot ?");
+        }
+    }
+
+    /* mounted volumes: boot volume first, then every other local disk,
+     * each with an ascii fill bar + used/total (indented like "vol  ") */
+    {
+        struct statfs root;
+        struct statfs *mntbuf;
+        int nmnt, i, nvols = 0;
+
+        if (statfs("/", &root) == 0) {
+            add_volume(in, "/", root.f_mntfromname);
+            nmnt = getmntinfo(&mntbuf, MNT_WAIT);
+            for (i = 0; i < nmnt && nvols < 10; i++) {
+                if (!(mntbuf[i].f_flags & MNT_LOCAL)) continue;
+                if (strncmp(mntbuf[i].f_mntfromname, "/dev/disk", 9) != 0) continue;
+                if (strcmp(mntbuf[i].f_mntfromname, root.f_mntfromname) == 0) continue;
+                add_volume(in, mntbuf[i].f_mntonname, mntbuf[i].f_mntfromname);
+                nvols++;
+            }
         }
     }
 
